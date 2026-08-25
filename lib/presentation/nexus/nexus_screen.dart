@@ -6,8 +6,12 @@ import '../../core/theme.dart';
 import '../../data/models/nexus_models.dart';
 import '../../data/nexus_service.dart';
 import 'nexus_settings_screen.dart';
+import 'widgets/nexus_summary.dart';
+import 'widgets/nexus_toolbar.dart';
+import 'widgets/nexus_board.dart';
 
-/// Aba Nova Nexus — Hub de anotações/tarefas (Workspaces: Rotina, Work).
+/// NOVA Nexus — Centro operacional Kanban.
+/// Evolução visual/UX mantendo contratos, identidade NOVA HUB e backend intactos.
 class NexusScreen extends StatefulWidget {
   const NexusScreen({super.key});
 
@@ -25,14 +29,18 @@ class _NexusScreenState extends State<NexusScreen> {
   bool _offline = false;
   String? _error;
 
-  // Mini-abas do workspace "Work" (label, status).
-  static const List<(String, String)> _workTabs = [
-    ('A Fazer', 'todo'),
-    ('Em Andamento', 'doing'),
-    ('Concluído', 'done'),
-    ('Projetos', 'project'),
-    ('StandBy', 'standby'),
-  ];
+  // ── Filtros / Toolbar ──
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _severityFilter = ''; // '' | alta | media | baixa
+  String _typeFilter = ''; // '' | requisição | incidente
+  NexusSort _sort = NexusSort.recent;
+  bool _showOnlyOverdue = false;
+
+  // Drag state
+  String _dragOverStatus = '';
+  final Set<String> _loadingIds = {};
+
+  // Compat: mantido para editor default, mas não mais usado como tab única.
   String _workFilter = 'todo';
 
   NexusWorkspace? get _currentWs {
@@ -44,19 +52,112 @@ class _NexusScreenState extends State<NexusScreen> {
 
   bool get _isWork => _currentWs?.kind == 'work';
 
-  /// Itens visíveis: no Work, filtra pela mini-aba ativa; senão, todos.
-  List<NexusItem> get _visibleItems {
-    if (!_isWork) return _items;
-    return _items.where((it) => it.status == _workFilter).toList();
+  /// Itens filtrados por busca + severidade + tipo + overdue + ordenação.
+  List<NexusItem> get _filteredItems {
+    var list = List<NexusItem>.from(_items);
+
+    final q = _searchCtrl.text.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      list = list.where((it) {
+        final hay = [
+          it.title,
+          it.displayTitle,
+          it.body,
+          it.tags.join(' '),
+          it.clientTag ?? '',
+          it.qualitorId ?? '',
+          it.typeTag ?? '',
+          it.severityTag ?? '',
+          it.shortId,
+          it.statusLabel,
+        ].join(' ').toLowerCase();
+        return hay.contains(q);
+      }).toList();
+    }
+    if (_severityFilter.isNotEmpty) {
+      list = list.where((it) => it.severityNormalized.contains(_severityFilter)).toList();
+    }
+    if (_typeFilter.isNotEmpty) {
+      list = list.where((it) => (it.typeTag ?? '').toLowerCase().contains(_typeFilter)).toList();
+    }
+    if (_showOnlyOverdue) {
+      list = list.where((it) => it.isOverdue).toList();
+    }
+
+    // Ordenação
+    switch (_sort) {
+      case NexusSort.recent:
+        list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        break;
+      case NexusSort.oldest:
+        list.sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
+        break;
+      case NexusSort.titleAZ:
+        list.sort((a, b) => a.displayTitle.toLowerCase().compareTo(b.displayTitle.toLowerCase()));
+        break;
+      case NexusSort.dueDate:
+        list.sort((a, b) {
+          final da = a.dueDateParsed;
+          final db = b.dueDateParsed;
+          if (da == null && db == null) return b.updatedAt.compareTo(a.updatedAt);
+          if (da == null) return 1;
+          if (db == null) return -1;
+          return da.compareTo(db);
+        });
+        break;
+      case NexusSort.priority:
+        int rank(NexusItem it) {
+          if (it.isDone) return 99;
+          if (it.isHighPriority) return 0;
+          if (it.isMediumPriority) return 1;
+          if (it.isLowPriority) return 2;
+          if ((it.typeTag ?? '').toLowerCase().contains('incidente')) return 3;
+          return 4;
+        }
+        list.sort((a, b) {
+          final ra = rank(a), rb = rank(b);
+          if (ra != rb) return ra.compareTo(rb);
+          return b.updatedAt.compareTo(a.updatedAt);
+        });
+        break;
+    }
+    return list;
   }
 
-  int _countForStatus(String status) =>
-      _items.where((it) => it.status == status).length;
+  /// Agrupa filtrados por status, normalizando legados (concluded→done, none→todo).
+  Map<String, List<NexusItem>> get _grouped {
+    final map = <String, List<NexusItem>>{
+      for (final id in NexusKanban.order) id: [],
+    };
+    for (final it in _filteredItems) {
+      var s = it.status;
+      if (s == 'concluded' || s == 'encerrado') s = 'done';
+      if (s == 'none' || s.isEmpty) s = 'todo';
+      if (!map.containsKey(s)) s = 'todo';
+      map[s]!.add(it);
+    }
+    return map;
+  }
+
+  List<String> get _columnOrder {
+    if (!_isWork) return NexusKanban.order;
+    // Sempre 5 para manter compatibilidade com _workTabs originais; board lida com vazio elegante.
+    return NexusKanban.order;
+  }
 
   @override
   void initState() {
     super.initState();
+    _searchCtrl.addListener(() {
+      if (mounted) setState(() {});
+    });
     _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _bootstrap() async {
@@ -92,6 +193,11 @@ class _NexusScreenState extends State<NexusScreen> {
       _selectedWs = id;
       _workFilter = 'todo';
       _loading = true;
+      _searchCtrl.clear();
+      _severityFilter = '';
+      _typeFilter = '';
+      _showOnlyOverdue = false;
+      _sort = NexusSort.recent;
     });
     try {
       _items = await _service.listItems(id);
@@ -113,13 +219,96 @@ class _NexusScreenState extends State<NexusScreen> {
   }
 
   Future<void> _toggleTask(NexusItem it) async {
+    if (_loadingIds.contains(it.id)) return;
     final newStatus = it.isDone ? 'todo' : 'done';
+    setState(() => _loadingIds.add(it.id));
+    // otimismo local
+    final idx = _items.indexWhere((e) => e.id == it.id);
+    NexusItem? backup;
+    if (idx != -1) {
+      backup = _items[idx];
+      _items[idx] = NexusItem(
+        id: backup.id,
+        workspaceId: backup.workspaceId,
+        parentId: backup.parentId,
+        type: backup.type,
+        title: backup.title,
+        body: backup.body,
+        status: newStatus,
+        tags: backup.tags,
+        dueDate: backup.dueDate,
+        position: backup.position,
+        timeSpent: backup.timeSpent,
+        createdAt: backup.createdAt,
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+      );
+      setState(() {});
+    }
     try {
       await _service.updateItem(it.id, {'status': newStatus});
       if (_selectedWs != null) _items = await _service.listItems(_selectedWs!);
-      if (mounted) setState(() {});
+      if (mounted) setState(() => _loadingIds.remove(it.id));
     } catch (e) {
+      // rollback
+      if (idx != -1 && backup != null) {
+        _items[idx] = backup;
+      }
+      if (mounted) setState(() => _loadingIds.remove(it.id));
       _snack('Falha ao atualizar: $e', error: true);
+    }
+  }
+
+  Future<void> _moveItem(NexusItem it, String newStatus) async {
+    if (it.status == newStatus) return;
+    if (_loadingIds.contains(it.id)) return;
+    setState(() {
+      _loadingIds.add(it.id);
+      _dragOverStatus = '';
+    });
+    // otimismo: atualiza localmente
+    final idx = _items.indexWhere((e) => e.id == it.id);
+    NexusItem? backup;
+    if (idx != -1) {
+      backup = _items[idx];
+      _items[idx] = NexusItem(
+        id: backup.id,
+        workspaceId: backup.workspaceId,
+        parentId: backup.parentId,
+        type: backup.type,
+        title: backup.title,
+        body: backup.body,
+        status: newStatus,
+        tags: backup.tags,
+        dueDate: backup.dueDate,
+        position: backup.position,
+        timeSpent: backup.timeSpent,
+        createdAt: backup.createdAt,
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+      );
+      setState(() {});
+    }
+    try {
+      await _service.updateItem(it.id, {'status': newStatus});
+      if (_selectedWs != null) {
+        _items = await _service.listItems(_selectedWs!);
+      }
+      if (mounted) {
+        setState(() => _loadingIds.remove(it.id));
+        _snack('Movido para ${NexusKanban.labelOf(newStatus)}');
+      }
+    } catch (e) {
+      // rollback visual
+      if (idx != -1 && backup != null) {
+        _items[idx] = backup;
+      } else {
+        try {
+          if (_selectedWs != null) _items = await _service.cachedItems(_selectedWs!);
+        } catch (_) {}
+      }
+      if (mounted) {
+        setState(() => _loadingIds.remove(it.id));
+        _snack('Falha ao mover: $e', error: true);
+      }
     }
   }
 
@@ -139,11 +328,9 @@ class _NexusScreenState extends State<NexusScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg, style: const TextStyle(fontSize: 13)),
-        backgroundColor:
-            (error ? AppColors.error : AppColors.success).withOpacity(0.9),
+        backgroundColor: (error ? AppColors.error : AppColors.success).withOpacity(0.9),
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
       ),
     );
@@ -157,27 +344,38 @@ class _NexusScreenState extends State<NexusScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        title: const Text(
-          'Nova Nexus',
-          style: TextStyle(
-              color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: _offline ? AppColors.warning : AppColors.success,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(color: (_offline ? AppColors.warning : AppColors.success).withOpacity(0.5), blurRadius: 6, spreadRadius: 1),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Text('Nova Nexus', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 16, letterSpacing: -0.3)),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.15), borderRadius: BorderRadius.circular(6), border: Border.all(color: AppColors.primary.withOpacity(0.3))),
+              child: const Text('KANBAN', style: TextStyle(color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+            ),
+          ],
         ),
         actions: [
           if (_offline)
             const Padding(
               padding: EdgeInsets.only(right: 4),
-              child: Icon(Icons.cloud_off,
-                  color: AppColors.warning, size: 20),
+              child: Icon(Icons.cloud_off, color: AppColors.warning, size: 20),
             ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: AppColors.textSecondary),
-            onPressed: _bootstrap,
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined,
-                color: AppColors.textSecondary),
-            onPressed: _openSettings,
-          ),
+          IconButton(icon: const Icon(Icons.refresh, color: AppColors.textSecondary), onPressed: _bootstrap, tooltip: 'Atualizar'),
+          IconButton(icon: const Icon(Icons.settings_outlined, color: AppColors.textSecondary), onPressed: _openSettings, tooltip: 'Configurar'),
         ],
       ),
       floatingActionButton: _selectedWs == null
@@ -203,27 +401,43 @@ class _NexusScreenState extends State<NexusScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.cloud_off,
-                  size: 56, color: AppColors.warning),
+              const Icon(Icons.cloud_off, size: 56, color: AppColors.warning),
               const SizedBox(height: 16),
-              Text(_error!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.textSecondary)),
+              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSecondary)),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _openSettings,
-                child: const Text('Configurar'),
-              ),
+              ElevatedButton(onPressed: _openSettings, child: const Text('Configurar')),
             ],
           ),
         ),
       );
     }
-    final items = _visibleItems;
     return Column(
       children: [
         _buildWorkspaceBar(),
-        if (_isWork) _buildWorkTabs(),
+        // Resumo operacional
+        NexusSummary(items: _filteredItems.isEmpty && _searchCtrl.text.isEmpty && _severityFilter.isEmpty && _typeFilter.isEmpty && !_showOnlyOverdue ? _items : _filteredItems, isWork: _isWork),
+        // Toolbar centralizada
+        NexusToolbar(
+          searchCtrl: _searchCtrl,
+          severityFilter: _severityFilter,
+          typeFilter: _typeFilter,
+          sort: _sort,
+          showOnlyOverdue: _showOnlyOverdue,
+          onSearchChanged: (v) => setState(() {}),
+          onSeverityChanged: (v) => setState(() => _severityFilter = v),
+          onTypeChanged: (v) => setState(() => _typeFilter = v),
+          onSortChanged: (v) => setState(() => _sort = v),
+          onOverdueChanged: (v) => setState(() => _showOnlyOverdue = v),
+          onClear: () => setState(() {
+            _searchCtrl.clear();
+            _severityFilter = '';
+            _typeFilter = '';
+            _showOnlyOverdue = false;
+            _sort = NexusSort.recent;
+          }),
+          filteredCount: _filteredItems.length,
+          totalCount: _items.length,
+        ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: _bootstrap,
@@ -231,12 +445,13 @@ class _NexusScreenState extends State<NexusScreen> {
             backgroundColor: AppColors.card,
             child: _loading
                 ? const Center(child: CupertinoActivityIndicator())
-                : items.isEmpty
-                    ? _emptyItems()
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-                        itemCount: items.length,
-                        itemBuilder: (_, i) => _itemCard(items[i]),
+                : _isWork
+                    ? _buildKanban()
+                    : NexusListView(
+                        items: _filteredItems,
+                        onCardTap: _openDetail,
+                        onToggle: _toggleTask,
+                        loadingIds: _loadingIds,
                       ),
           ),
         ),
@@ -244,58 +459,44 @@ class _NexusScreenState extends State<NexusScreen> {
     );
   }
 
-  Widget _buildWorkTabs() {
-    return SizedBox(
-      height: 44,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        children: _workTabs.map((t) {
-          final label = t.$1;
-          final status = t.$2;
-          final sel = _workFilter == status;
-          final count = _countForStatus(status);
-          final color = _statusColor(status);
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: Text(count > 0 ? '$label ($count)' : label),
-              selected: sel,
-              onSelected: (_) => setState(() => _workFilter = status),
-              labelStyle: TextStyle(
-                color: sel ? Colors.white : AppColors.textSecondary,
-                fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
-                fontSize: 12,
-              ),
-              backgroundColor: AppColors.card,
-              selectedColor: color,
-              side: BorderSide(color: color.withOpacity(sel ? 0 : 0.4)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              visualDensity: VisualDensity.compact,
+  Widget _buildKanban() {
+    final grouped = _grouped;
+    final cols = _columnOrder;
+    // Se busca filtra tudo, mostra empty central
+    if (_filteredItems.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 32, 16, 96),
+        children: [
+          const Icon(CupertinoIcons.search, size: 48, color: AppColors.textMuted),
+          const SizedBox(height: 12),
+          const Center(child: Text('Nenhum item corresponde aos filtros.', style: TextStyle(color: AppColors.textMuted))),
+          const SizedBox(height: 8),
+          Center(
+            child: OutlinedButton.icon(
+              onPressed: () => setState(() {
+                _searchCtrl.clear();
+                _severityFilter = '';
+                _typeFilter = '';
+                _showOnlyOverdue = false;
+              }),
+              icon: const Icon(Icons.filter_alt_off, size: 16),
+              label: const Text('Limpar filtros'),
             ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'todo':
-        return AppColors.neonBlue;
-      case 'doing':
-        return AppColors.warning;
-      case 'done':
-        return AppColors.success;
-      case 'project':
-        return AppColors.neonPurple;
-      case 'standby':
-        return AppColors.textMuted;
-      default:
-        return AppColors.primary;
+          ),
+        ],
+      );
     }
+    return NexusBoard(
+      grouped: grouped,
+      columnOrder: cols,
+      isWork: _isWork,
+      loadingIds: _loadingIds,
+      dragOverStatus: _dragOverStatus,
+      onCardTap: _openDetail,
+      onToggle: _toggleTask,
+      onDrop: _moveItem,
+      onDragOverChanged: (s) => setState(() => _dragOverStatus = s),
+    );
   }
 
   Widget _buildWorkspaceBar() {
@@ -308,152 +509,35 @@ class _NexusScreenState extends State<NexusScreen> {
           ..._workspaces.map((w) {
             final sel = w.id == _selectedWs;
             final color = _wsColor(w);
+            // Para workspace atual, mostra count total; para outros, sem count
+            final label = sel ? '${w.name}  •  ${_filteredItems.length}/${_items.length}' : w.name;
             return Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(
-                label: Text(w.name),
+                label: Text(label),
                 selected: sel,
                 onSelected: (_) => _selectWorkspace(w.id),
                 labelStyle: TextStyle(
                   color: sel ? Colors.white : AppColors.textSecondary,
-                  fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
+                  fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
                   fontSize: 13,
                 ),
                 backgroundColor: AppColors.card,
                 selectedColor: color,
                 side: BorderSide(color: color.withOpacity(sel ? 0 : 0.4)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               ),
             );
           }),
           ActionChip(
             avatar: const Icon(Icons.add, size: 16, color: AppColors.neonBlue),
             label: const Text('Workspace'),
-            labelStyle:
-                const TextStyle(color: AppColors.neonBlue, fontSize: 13),
+            labelStyle: const TextStyle(color: AppColors.neonBlue, fontSize: 13),
             backgroundColor: AppColors.card,
             side: BorderSide(color: AppColors.neonBlue.withOpacity(0.4)),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             onPressed: _createWorkspaceDialog,
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _emptyItems() {
-    return ListView(
-      children: [
-        const SizedBox(height: 120),
-        Icon(CupertinoIcons.tray, size: 56, color: AppColors.textMuted),
-        const SizedBox(height: 16),
-        const Center(
-          child: Text('Nenhum item aqui ainda.\nToque em + para criar.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textMuted, height: 1.5)),
-        ),
-      ],
-    );
-  }
-
-  Widget _itemCard(NexusItem it) {
-    return GlassContainer(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => _openDetail(it),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (it.isTask)
-              GestureDetector(
-                onTap: () => _toggleTask(it),
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 2, right: 10),
-                  child: Icon(
-                    it.isDone
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
-                    color: it.isDone
-                        ? AppColors.success
-                        : AppColors.textSecondary,
-                    size: 22,
-                  ),
-                ),
-              )
-            else
-              const Padding(
-                padding: EdgeInsets.only(top: 2, right: 10),
-                child: Icon(CupertinoIcons.doc_text,
-                    color: AppColors.neonCyan, size: 20),
-              ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    it.title.isEmpty ? '(sem título)' : it.title,
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      decoration:
-                          it.isDone ? TextDecoration.lineThrough : null,
-                    ),
-                  ),
-                  if (it.body.trim().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        it.body.replaceAll('\n', ' ').trim(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            color: AppColors.textMuted, fontSize: 12),
-                      ),
-                    ),
-                  if (it.tags.isNotEmpty || it.dueDate != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          if (it.dueDate != null)
-                            _pill(Icons.event, it.dueDate!,
-                                AppColors.neonPurple),
-                          ...it.tags.map((t) =>
-                              _pill(Icons.tag, t, AppColors.neonBlue)),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _pill(IconData icon, String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 11, color: color),
-          const SizedBox(width: 4),
-          Text(text, style: TextStyle(color: color, fontSize: 11)),
         ],
       ),
     );
@@ -475,88 +559,121 @@ class _NexusScreenState extends State<NexusScreen> {
       context: context,
       backgroundColor: AppColors.card,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.6,
+        initialChildSize: 0.62,
         maxChildSize: 0.92,
         builder: (_, scroll) => Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: ListView(
             controller: scroll,
             children: [
               Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.textMuted,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+                child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.textMuted, borderRadius: BorderRadius.circular(2))),
               ),
               const SizedBox(height: 16),
+              // Header meta
               Row(
                 children: [
-                  Icon(
-                    it.isTask
-                        ? Icons.check_circle_outline
-                        : CupertinoIcons.doc_text,
-                    color: AppColors.neonCyan,
-                    size: 20,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: it.statusColor.withOpacity(0.15), borderRadius: BorderRadius.circular(8), border: Border.all(color: it.statusColor.withOpacity(0.3))),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(it.statusIcon, size: 14, color: it.statusColor),
+                      const SizedBox(width: 4),
+                      Text(it.statusLabel, style: TextStyle(color: it.statusColor, fontSize: 11, fontWeight: FontWeight.w700)),
+                    ]),
                   ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      it.title.isEmpty ? '(sem título)' : it.title,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  if (it.isQualitor && it.qualitorId != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: it.severityColor.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                      child: Text('#${it.qualitorId}', style: TextStyle(color: it.severityColor, fontSize: 11, fontWeight: FontWeight.w700)),
                     ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
+                    onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
-              if (it.tags.isNotEmpty || it.dueDate != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      if (it.dueDate != null)
-                        _pill(Icons.event, it.dueDate!, AppColors.neonPurple),
-                      ...it.tags
-                          .map((t) => _pill(Icons.tag, t, AppColors.neonBlue)),
-                    ],
-                  ),
+              const SizedBox(height: 12),
+              Text(it.displayTitle.isEmpty ? '(sem título)' : it.displayTitle,
+                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w700, height: 1.3)),
+              const SizedBox(height: 8),
+              // Meta grid
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  if (it.clientLabel.isNotEmpty) _detailPill(Icons.business_outlined, it.clientLabel, AppColors.neonPurple),
+                  if (it.severityLabel.isNotEmpty) _detailPill(Icons.flag_outlined, it.severityLabel, it.severityColor),
+                  if (it.typeTag != null) _detailPill(Icons.category_outlined, it.typeTag!, AppColors.neonBlue),
+                  if (it.dueDate != null) _detailPill(Icons.event_outlined, it.dueDate!, it.isOverdue ? AppColors.error : AppColors.neonPurple),
+                  if (it.updatedShort.isNotEmpty) _detailPill(CupertinoIcons.clock, 'Atualizado ${it.updatedShort}', AppColors.textMuted),
+                  _detailPill(it.isTask ? Icons.task_alt : CupertinoIcons.doc_text, it.isTask ? 'Tarefa' : 'Nota', AppColors.neonCyan),
+                ],
+              ),
+              if (it.tags.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: it.tags.map((t) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: AppColors.backgroundAlt, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.glassBorder)),
+                    child: Text(t, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                  )).toList(),
                 ),
+              ],
               const Divider(height: 28, color: AppColors.glassBorder),
               if (it.body.trim().isEmpty)
-                const Text('(sem conteúdo)',
-                    style: TextStyle(color: AppColors.textMuted))
+                const Text('(sem conteúdo)', style: TextStyle(color: AppColors.textMuted))
               else
                 MarkdownBody(
                   data: it.body,
                   styleSheet: MarkdownStyleSheet(
-                    p: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 14),
-                    h1: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold),
-                    h2: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold),
-                    code: const TextStyle(
-                        color: AppColors.neonCyan, fontSize: 13),
+                    p: const TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.5),
+                    h1: const TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
+                    h2: const TextStyle(color: AppColors.textPrimary, fontSize: 17, fontWeight: FontWeight.bold),
+                    h3: const TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w600),
+                    code: const TextStyle(color: AppColors.neonCyan, fontSize: 13),
+                    blockquote: const TextStyle(color: AppColors.textMuted, fontStyle: FontStyle.italic),
+                    listBullet: const TextStyle(color: AppColors.textSecondary),
                   ),
                 ),
               const SizedBox(height: 24),
+              // Ações rápidas de status (Kanban)
+              if (_isWork) ...[
+                const Text('Mover para', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: NexusKanban.order.map((sid) {
+                    final sel = it.status == sid;
+                    final col = NexusKanban.colorOf(sid);
+                    final lab = NexusKanban.labelOf(sid);
+                    return ChoiceChip(
+                      label: Text(lab),
+                      selected: sel,
+                      onSelected: sel ? null : (_) {
+                        Navigator.pop(context);
+                        _moveItem(it, sid);
+                      },
+                      labelStyle: TextStyle(color: sel ? Colors.white : AppColors.textSecondary, fontWeight: sel ? FontWeight.w700 : FontWeight.w400, fontSize: 12),
+                      backgroundColor: AppColors.backgroundAlt,
+                      selectedColor: col,
+                      side: BorderSide(color: col.withOpacity(sel ? 0 : 0.35)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      visualDensity: VisualDensity.compact,
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+              ],
               Row(
                 children: [
                   Expanded(
@@ -569,12 +686,9 @@ class _NexusScreenState extends State<NexusScreen> {
                       label: const Text('Editar'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.neonBlue,
-                        side: BorderSide(
-                            color: AppColors.neonBlue.withOpacity(0.4)),
+                        side: BorderSide(color: AppColors.neonBlue.withOpacity(0.4)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ),
@@ -589,12 +703,9 @@ class _NexusScreenState extends State<NexusScreen> {
                       label: const Text('Excluir'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.error,
-                        side:
-                            BorderSide(color: AppColors.error.withOpacity(0.4)),
+                        side: BorderSide(color: AppColors.error.withOpacity(0.4)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ),
@@ -607,13 +718,24 @@ class _NexusScreenState extends State<NexusScreen> {
     );
   }
 
+  Widget _detailPill(IconData icon, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withOpacity(0.2))),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 5),
+        Text(text, style: TextStyle(color: color, fontSize: 11.5, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+
   // ---------------- Editor (create/update) ----------------
 
   void _openEditor({NexusItem? existing}) {
     final titleCtrl = TextEditingController(text: existing?.title ?? '');
     final bodyCtrl = TextEditingController(text: existing?.body ?? '');
-    final tagsCtrl =
-        TextEditingController(text: existing?.tags.join(', ') ?? '');
+    final tagsCtrl = TextEditingController(text: existing?.tags.join(', ') ?? '');
     final dueCtrl = TextEditingController(text: existing?.dueDate ?? '');
     String type = existing?.type ?? 'task';
     String status = existing?.status ?? (_isWork ? _workFilter : 'todo');
@@ -623,94 +745,51 @@ class _NexusScreenState extends State<NexusScreen> {
       context: context,
       backgroundColor: AppColors.card,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 16,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-          ),
+          padding: EdgeInsets.only(left: 20, right: 20, top: 16, bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.textMuted,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
+                Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.textMuted, borderRadius: BorderRadius.circular(2)))),
                 const SizedBox(height: 16),
-                Text(
-                  existing == null ? 'Novo item' : 'Editar item',
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(existing == null ? 'Novo item' : 'Editar item', style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 16),
                 SegmentedButton<String>(
                   segments: const [
-                    ButtonSegment(
-                        value: 'task',
-                        label: Text('Tarefa'),
-                        icon: Icon(Icons.check_circle_outline, size: 16)),
-                    ButtonSegment(
-                        value: 'note',
-                        label: Text('Nota'),
-                        icon: Icon(CupertinoIcons.doc_text, size: 16)),
+                    ButtonSegment(value: 'task', label: Text('Tarefa'), icon: Icon(Icons.check_circle_outline, size: 16)),
+                    ButtonSegment(value: 'note', label: Text('Nota'), icon: Icon(CupertinoIcons.doc_text, size: 16)),
                   ],
                   selected: {type},
                   onSelectionChanged: (s) => setSheet(() => type = s.first),
                   style: ButtonStyle(
-                    foregroundColor: WidgetStateProperty.resolveWith((st) =>
-                        st.contains(WidgetState.selected)
-                            ? Colors.white
-                            : AppColors.textSecondary),
-                    backgroundColor: WidgetStateProperty.resolveWith((st) =>
-                        st.contains(WidgetState.selected)
-                            ? AppColors.primary
-                            : AppColors.backgroundAlt),
+                    foregroundColor: WidgetStateProperty.resolveWith((st) => st.contains(WidgetState.selected) ? Colors.white : AppColors.textSecondary),
+                    backgroundColor: WidgetStateProperty.resolveWith((st) => st.contains(WidgetState.selected) ? AppColors.primary : AppColors.backgroundAlt),
                   ),
                 ),
                 if (_isWork) ...[
                   const SizedBox(height: 16),
-                  const Text('Situação',
-                      style: TextStyle(
-                          color: AppColors.textMuted, fontSize: 12)),
+                  const Text('Situação', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: _workTabs.map((t) {
-                      final sel = status == t.$2;
-                      final color = _statusColor(t.$2);
+                    children: NexusKanban.order.map((sid) {
+                      final lab = NexusKanban.labelOf(sid);
+                      final sel = status == sid;
+                      final color = NexusKanban.colorOf(sid);
                       return ChoiceChip(
-                        label: Text(t.$1),
+                        label: Text(lab),
                         selected: sel,
-                        onSelected: (_) => setSheet(() => status = t.$2),
-                        labelStyle: TextStyle(
-                          color: sel ? Colors.white : AppColors.textSecondary,
-                          fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
-                          fontSize: 12,
-                        ),
+                        onSelected: (_) => setSheet(() => status = sid),
+                        labelStyle: TextStyle(color: sel ? Colors.white : AppColors.textSecondary, fontWeight: sel ? FontWeight.w600 : FontWeight.w400, fontSize: 12),
                         backgroundColor: AppColors.backgroundAlt,
                         selectedColor: color,
-                        side: BorderSide(
-                            color: color.withOpacity(sel ? 0 : 0.4)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
+                        side: BorderSide(color: color.withOpacity(sel ? 0 : 0.4)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         visualDensity: VisualDensity.compact,
                       );
                     }).toList(),
@@ -736,64 +815,27 @@ class _NexusScreenState extends State<NexusScreen> {
                               return;
                             }
                             setSheet(() => saving = true);
-                            final tags = tagsCtrl.text
-                                .split(',')
-                                .map((e) => e.trim())
-                                .where((e) => e.isNotEmpty)
-                                .toList();
+                            final tags = tagsCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
                             try {
-                              final effStatus = _isWork
-                                  ? status
-                                  : (type == 'task' ? 'todo' : 'none');
+                              final effStatus = _isWork ? status : (type == 'task' ? 'todo' : 'none');
                               if (existing == null) {
-                                await _service.createItem(
-                                  workspaceId: _selectedWs!,
-                                  type: type,
-                                  title: titleCtrl.text.trim(),
-                                  body: bodyCtrl.text,
-                                  status: effStatus,
-                                  tags: tags,
-                                  dueDate: dueCtrl.text.trim(),
-                                );
+                                await _service.createItem(workspaceId: _selectedWs!, type: type, title: titleCtrl.text.trim(), body: bodyCtrl.text, status: effStatus, tags: tags, dueDate: dueCtrl.text.trim());
                                 if (_isWork) _workFilter = effStatus;
                               } else {
-                                await _service.updateItem(existing.id, {
-                                  'type': type,
-                                  'title': titleCtrl.text.trim(),
-                                  'body': bodyCtrl.text,
-                                  if (_isWork) 'status': effStatus,
-                                  'tags': tags,
-                                  'due_date': dueCtrl.text.trim(),
-                                });
+                                await _service.updateItem(existing.id, {'type': type, 'title': titleCtrl.text.trim(), 'body': bodyCtrl.text, if (_isWork) 'status': effStatus, 'tags': tags, 'due_date': dueCtrl.text.trim()});
                                 if (_isWork) _workFilter = effStatus;
                               }
-                              if (_selectedWs != null) {
-                                _items =
-                                    await _service.listItems(_selectedWs!);
-                              }
+                              if (_selectedWs != null) _items = await _service.listItems(_selectedWs!);
                               if (ctx.mounted) Navigator.pop(ctx);
                               if (mounted) setState(() {});
-                              _snack(existing == null
-                                  ? 'Item criado'
-                                  : 'Item atualizado');
+                              _snack(existing == null ? 'Item criado' : 'Item atualizado');
                             } catch (e) {
                               setSheet(() => saving = false);
                               _snack('Falha: $e', error: true);
                             }
                           },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: saving
-                        ? const CupertinoActivityIndicator(color: Colors.white)
-                        : Text(existing == null ? 'Criar' : 'Salvar',
-                            style: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w600)),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    child: saving ? const CupertinoActivityIndicator(color: Colors.white) : Text(existing == null ? 'Criar' : 'Salvar', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                   ),
                 ),
               ],
@@ -814,20 +856,10 @@ class _NexusScreenState extends State<NexusScreen> {
         hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 14),
         filled: true,
         fillColor: AppColors.backgroundAlt,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.glassBorder, width: 0.5),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.glassBorder, width: 0.5),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1),
-        ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.glassBorder, width: 0.5)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.glassBorder, width: 0.5)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       ),
     );
   }
@@ -838,27 +870,11 @@ class _NexusScreenState extends State<NexusScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.card,
-        title: const Text('Novo Workspace',
-            style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: const TextStyle(color: AppColors.textPrimary),
-          decoration: const InputDecoration(
-            hintText: 'Nome',
-            hintStyle: TextStyle(color: AppColors.textMuted),
-          ),
-        ),
+        title: const Text('Novo Workspace', style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+        content: TextField(controller: ctrl, autofocus: true, style: const TextStyle(color: AppColors.textPrimary), decoration: const InputDecoration(hintText: 'Nome', hintStyle: TextStyle(color: AppColors.textMuted))),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Criar'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: AppColors.textSecondary))),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Criar')),
         ],
       ),
     );
