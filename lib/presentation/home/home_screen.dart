@@ -573,9 +573,9 @@ class _HomeScreenState extends State<HomeScreen>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => OpenCodeSetupScreen(
-          deviceIp: 'localhost',
-          deviceName: 'Nova-PopOS',
+        builder: (context) => const OpenCodeSetupScreen(
+          deviceIp: String.fromEnvironment('OPENCODE_HOST', defaultValue: 'localhost'),
+          deviceName: 'Primary Workstation',
         ),
       ),
     );

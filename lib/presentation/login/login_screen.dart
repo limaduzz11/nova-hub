@@ -15,7 +15,7 @@ class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _urlController = TextEditingController(text: 'http://localhost:8090');
+  final _urlController = TextEditingController(text: AppConfig.defaultUpSnapUrl);
   bool _obscurePassword = true;
   
   late AnimationController _animController;

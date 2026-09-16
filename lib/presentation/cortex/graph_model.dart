@@ -63,7 +63,7 @@ class GraphEdge {
 /// Grafo completo do vault.
 ///
 /// Fonte primária: backend Nexus (`/api/graph`), que faz parse ao vivo do Vault.
-/// Fallback: asset embutido `assets/vault.json` (offline).
+/// Fallback: asset embutido `assets/sample_graph.json` (offline).
 class VaultGraph {
   VaultGraph({required this.nodes, required this.edges});
 
@@ -98,7 +98,7 @@ class VaultGraph {
 
   /// Carrega do asset embutido (fallback offline).
   static Future<VaultGraph> loadAsset() async {
-    final raw = await rootBundle.loadString('assets/vault.json');
+    final raw = await rootBundle.loadString('assets/sample_graph.json');
     return fromJson(jsonDecode(raw) as Map<String, dynamic>);
   }
 }

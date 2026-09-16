@@ -1,5 +1,8 @@
 class AppConfig {
-  static const String defaultUpSnapUrl = 'http://localhost:8090';
+  static const String defaultUpSnapUrl = String.fromEnvironment(
+    'UPSNAP_URL',
+    defaultValue: 'http://localhost:8090',
+  );
   static const String defaultDeviceId = 'PC Principal';
   
   final String upsnapUrl;

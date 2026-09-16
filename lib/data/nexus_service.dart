@@ -19,10 +19,14 @@ class NexusService {
   static const _cacheWorkspaces = 'nexus_cache_workspaces';
   static const _cacheItemsPrefix = 'nexus_cache_items_';
 
-  /// Padrões que já apontam para o backend implantado (Tailscale).
-  static const String defaultUrl = 'http://localhost:8080';
-  static const String defaultApiKey =
-      '';
+  static const String defaultUrl = String.fromEnvironment(
+    'NEXUS_URL',
+    defaultValue: 'http://localhost:8080',
+  );
+  static const String defaultApiKey = String.fromEnvironment(
+    'NEXUS_API_KEY',
+    defaultValue: '',
+  );
 
   Future<String> getUrl() async =>
       (await _storage.read(key: _kUrl))?.trim().isNotEmpty == true

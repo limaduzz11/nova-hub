@@ -26,7 +26,7 @@ class _OpenCodeScreenState extends State<OpenCodeScreen> {
   bool _hasError = false;
   String _errorMessage = '';
   String _username = 'opencode';
-  String _password = '';
+  String _password = const String.fromEnvironment('OPENCODE_PASSWORD', defaultValue: '');
 
   @override
   void initState() {
@@ -44,7 +44,7 @@ class _OpenCodeScreenState extends State<OpenCodeScreen> {
         : 'opencode';
     _password = creds['password']!.isNotEmpty
         ? creds['password']!
-        : '';
+        : const String.fromEnvironment('OPENCODE_PASSWORD', defaultValue: '');
 
     // Envia o Basic Auth pré-emptivamente no header. Assim o documento carrega
     // com 200 e o WebView "cacheia" a credencial para TODOS os requests

@@ -50,3 +50,5 @@ AGENTS.md
 nova_hub_desktop.zip
 nova_hub_desktop/
 knowledge/
+assets/vault.json
+*.env

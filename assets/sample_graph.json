@@ -1,0 +1,54 @@
+{
+  "nodes": [
+    {
+      "id": "node-1",
+      "label": "NOVA Hub Core",
+      "group": "core",
+      "degree": 3,
+      "path": "docs/core.md",
+      "content": "# NOVA Hub Core\n\nCentral monitoring and device dashboard system."
+    },
+    {
+      "id": "node-2",
+      "label": "Device Manager",
+      "group": "infrastructure",
+      "degree": 2,
+      "path": "docs/devices.md",
+      "content": "# Device Manager\n\nManages active workstations, wake-on-lan and telemetry."
+    },
+    {
+      "id": "node-3",
+      "label": "Command Deck",
+      "group": "operations",
+      "degree": 2,
+      "path": "docs/commands.md",
+      "content": "# Command Deck\n\nRemote execution bridge and telemetry view."
+    },
+    {
+      "id": "node-4",
+      "label": "Cortex Graph",
+      "group": "visualization",
+      "degree": 1,
+      "path": "docs/cortex.md",
+      "content": "# Cortex Graph\n\nKnowledge visualization and graph topology."
+    }
+  ],
+  "edges": [
+    {
+      "from": "node-1",
+      "to": "node-2"
+    },
+    {
+      "from": "node-1",
+      "to": "node-3"
+    },
+    {
+      "from": "node-1",
+      "to": "node-4"
+    },
+    {
+      "from": "node-2",
+      "to": "node-3"
+    }
+  ]
+}
