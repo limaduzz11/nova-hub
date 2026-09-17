@@ -10,7 +10,7 @@ systemctl --user status nova-hub-web
 journalctl --user -u nova-hub-web -f
 ```
 
-Health check: `curl http://100.117.90.59:3001/healthz`.
+Health check: `curl http://100.64.0.1:3001/healthz`.
 
 ---
 ## Relações no Context Engine

@@ -1,11 +1,11 @@
 # Acesso Tailscale
 
 - MagicDNS: `http://pop-os:3001`
-- IP privado: `http://100.117.90.59:3001`
-- Bind do serviço: somente `100.117.90.59:3001`.
+- IP privado: `http://100.64.0.1:3001`
+- Bind do serviço: somente `100.64.0.1:3001`.
 - Não há bind em `0.0.0.0`, porta no roteador ou túnel público.
 
-Validação atual: acesso Tailscale retorna HTTP 200; `192.168.15.13:3001` retorna conexão recusada.
+Validação atual: acesso Tailscale retorna HTTP 200; `192.168.1.100:3001` retorna conexão recusada.
 
 ---
 ## Relações no Context Engine

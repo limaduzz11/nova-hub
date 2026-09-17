@@ -98,7 +98,7 @@ const LinkModule = (() => {
       <section class="glass link-ssh-card">
         <div class="link-card-topline"><span class="link-card-icon">${Util.icon('terminal')}</span><span class="badge badge-doing">INTEGRADO</span></div>
         <h3>SSH Terminal</h3>
-        <p class="text-mono">limaduzz@100.117.90.59:22</p>
+        <p class="text-mono">operator@100.64.0.1:22</p>
         <div class="link-connection-row"><span class="status-dot"></span><span>PTY real via canal seguro do HUB</span></div>
         <button class="btn btn-glass btn-sm" id="sshBtn" type="button">${Util.icon('terminal')}<span>Abrir Terminal</span></button>
       </section>

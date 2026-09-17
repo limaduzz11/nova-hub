@@ -123,7 +123,7 @@ function attachTerminalServer({ server, authenticate, isAllowedAddress }) {
   function TAILSCALE_DISPLAY_HOST() {
     return process.env.NOVA_SSH_HOST === '127.0.0.1'
       ? '127.0.0.1'
-      : (process.env.NOVA_SSH_DISPLAY_HOST || '100.117.90.59');
+      : (process.env.NOVA_SSH_DISPLAY_HOST || '100.64.0.1');
   }
 
   function attach(socket, terminal, auth) {

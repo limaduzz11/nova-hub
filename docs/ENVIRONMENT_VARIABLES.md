@@ -2,7 +2,7 @@
 
 | Variável | Padrão | Uso |
 |---|---|---|
-| `NOVA_WEB_HOST` | `100.117.90.59` | bind Tailscale |
+| `NOVA_WEB_HOST` | `100.64.0.1` | bind Tailscale |
 | `NOVA_WEB_PORT` | `3000` | porta web |
 | `KEYCLOAK_TOKEN_URL` | endpoint atual do realm | login/refresh |
 | `KEYCLOAK_CLIENT_ID` | `nova-hub-v3` | cliente público Keycloak |

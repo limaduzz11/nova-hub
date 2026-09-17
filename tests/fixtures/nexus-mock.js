@@ -75,7 +75,7 @@ async function registerMoonlightMock(page) {
   await page.route('**/web-api/integrations/moonlight', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({ sunshine: 'online', host: 'pop-os', tailscale_ip: '100.117.90.59', mode: 'external-client', reachable_ports: [47984, 47989, 47990, 48010] }),
+    body: JSON.stringify({ sunshine: 'online', host: 'pop-os', tailscale_ip: '100.64.0.1', mode: 'external-client', reachable_ports: [47984, 47989, 47990, 48010] }),
   }));
 }
 

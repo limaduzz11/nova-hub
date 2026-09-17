@@ -8,7 +8,7 @@
 
 const BASE_URL = process.env.NEXUS_BASE_URL || 'http://127.0.0.1:8080';
 const TOKEN_URL = process.env.KEYCLOAK_TOKEN_URL ||
-  'http://100.121.250.3:18080/auth/realms/nova-hub/protocol/openid-connect/token';
+  'http://100.64.0.2:18080/auth/realms/nova-hub/protocol/openid-connect/token';
 const CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID || 'nova-hub-v3';
 const USER = process.env.NOVA_PROBE_USER || '';
 const PASS = process.env.NOVA_PROBE_PASSWORD || '';

@@ -9,12 +9,12 @@ Use recarregamento forçado (`Ctrl+Shift+R`). O HTML atual usa `/src/css/*` e `/
 ```bash
 systemctl --user status nova-hub-web
 journalctl --user -u nova-hub-web -n 100 --no-pager
-curl http://100.117.90.59:3001/healthz
+curl http://100.64.0.1:3001/healthz
 ```
 
 ## Login
 
-Confirme Keycloak em `100.121.250.3:18080` e client ID `nova-hub-v3`.
+Confirme Keycloak em `100.64.0.2:18080` e client ID `nova-hub-v3`.
 
 ## Backend
 
