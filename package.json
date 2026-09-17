@@ -1,0 +1,43 @@
+{
+  "name": "nova-hub-v4-web",
+  "version": "0.5.0",
+  "description": "NOVA HUB V5 — interface web privada ELP TECH",
+  "main": "server.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "node tests/smoke.js",
+    "test:visual": "node tests/visual-matrix.js",
+    "test:terminal": "node tests/terminal-integration.js",
+    "test:cortex-stability": "node tests/cortex-stability.js",
+    "check": "node --check server.js && node --check terminal-server.js && node --check src/js/app.js && node --check src/js/utils/api.js && node --check src/js/utils/router.js && node --check src/js/utils/util.js && node --check src/js/modules/link.js && node --check src/js/modules/terminal.js && node --check src/js/modules/nexus.js && node --check src/js/modules/arcadia.js && node --check src/js/modules/cortex.js && node --check src/js/modules/settings.js && node --check tests/smoke.js && node --check tests/terminal-integration.js && node --check tests/cortex-stability.js && node --check tests/visual-matrix.js && node --check tests/integration-probe.js",
+    "lint": "eslint .",
+    "probe:integrations": "node tests/integration-probe.js",
+    "start": "node server.js",
+    "qa:health": "tsx qa/scripts/qa.ts health",
+    "qa:auth": "tsx qa/auth/auth.setup.ts",
+    "qa:auth:browser": "tsx qa/auth/auth.setup.ts --from-browser",
+    "qa:list": "playwright test --config=qa/config/playwright.config.ts --list",
+    "qa:smoke": "playwright test --config=qa/config/playwright.config.ts --project=chromium",
+    "qa:smoke:mobile": "playwright test --config=qa/config/playwright.config.ts",
+    "qa:report": "playwright show-report qa/projects/nova-hub-web/runs/latest/html-report --host 127.0.0.1 --port 9323"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "express": "^5.2.1",
+    "node-pty": "^1.1.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "eslint": "^9.39.5",
+    "playwright": "^1.62.1",
+    "tsx": "^4.23.12"
+  }
+}

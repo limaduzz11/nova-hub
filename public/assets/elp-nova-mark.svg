@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">ELP TECH — NOVA HUB V5</title>
+  <desc id="desc">Símbolo ELP Tecnologia adaptado para o NOVA HUB V5.</desc>
+  <defs>
+    <linearGradient id="blue" x1="14" y1="10" x2="112" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="5" y="5" width="118" height="118" rx="30" fill="url(#blue)"/>
+  <rect x="5" y="5" width="118" height="118" rx="30" fill="none" stroke="#60A5FA" stroke-width="2" stroke-opacity=".72"/>
+  <path d="M28 50c0-12.15 9.85-22 22-22h8c12.15 0 22 9.85 22 22v28c0 12.15-9.85 22-22 22h-8c-12.15 0-22-9.85-22-22V50z" fill="none" stroke="white" stroke-width="7.2"/>
+  <path d="M44 48l20 16-20 16" fill="none" stroke="white" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="98" cy="31" r="8" fill="#22D3EE" stroke="#D9F9FF" stroke-width="2" filter="url(#glow)"/>
+  <path d="M91 94h21" stroke="#7DD3FC" stroke-width="4" stroke-linecap="round"/>
+</svg>

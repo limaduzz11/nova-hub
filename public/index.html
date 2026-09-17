@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOVA HUB V5 — ELP TECH</title>
+<link rel="stylesheet" href="/src/css/design-system.css">
+<link rel="stylesheet" href="/src/css/layout.css">
+<link rel="stylesheet" href="/src/css/modules.css">
+<link rel="stylesheet" href="/vendor/xterm.css">
+<link rel="icon" type="image/svg+xml" href="/assets/elp-nova-mark.svg">
+</head>
+<body>
+
+<div class="bg-pattern"></div>
+
+<!-- ── LOGIN SCREEN ─────────────────────────────────────────────── -->
+<div id="loginScreen" class="login-overlay">
+  <div class="login-card glass">
+    <img class="login-brand-mark" src="/assets/elp-nova-mark.svg" alt="Logo ELP TECH — NOVA HUB V5">
+    <div class="login-logo">NOVA <span class="accent">HUB</span></div>
+    <div class="login-subtitle">WEB OPERATIONS</div>
+    <form id="loginForm" class="login-form">
+      <div class="form-group">
+        <label for="username">Usuário</label>
+        <input type="text" id="username" class="input" placeholder="seu.usuario" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="password">Senha</label>
+        <input type="password" id="password" class="input" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <div id="loginError" class="login-error hidden"></div>
+      <button type="submit" class="btn btn-primary login-btn" id="loginBtn">
+        <span class="btn-text">Entrar</span>
+        <span class="btn-spinner spinner hidden"></span>
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ── MAIN APP ─────────────────────────────────────────────────── -->
+<div id="mainApp" class="hidden">
+  <!-- Top navigation -->
+  <aside id="sidebar" class="sidebar glass">
+    <nav class="sidebar-nav" id="sidebarNav">
+      <a class="nav-item active" data-module="link" href="#link" aria-label="Abrir NOVA Link" data-tooltip="NOVA Link">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+        <span>Link</span>
+      </a>
+      <a class="nav-item" data-module="nexus" href="#nexus" aria-label="Abrir NOVA Nexus" data-tooltip="NOVA Nexus">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+        <span>Nexus</span>
+      </a>
+      <a class="nav-item" data-module="arcadia" href="#arcadia" aria-label="Abrir NOVA Arcadia" data-tooltip="NOVA Arcadia">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10"/><path d="M2 12h20"/></svg>
+        <span>Arcadia</span>
+      </a>
+      <a class="nav-item" data-module="cortex" href="#cortex" aria-label="Abrir NOVA Cortex" data-tooltip="NOVA Cortex">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M12 9v0m-5.2 6.4l3.2-3.2m4 1l3.2-5.2"/></svg>
+        <span>Cortex</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <a class="nav-item" data-module="settings" id="settingsBtn" href="#settings" aria-label="Abrir Settings" data-tooltip="Settings">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span>Settings</span>
+      </a>
+      <button class="nav-item" id="logoutBtn" type="button" aria-label="Encerrar sessão" data-tooltip="Sair">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        <span>Sair</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Content -->
+  <main class="main-content" id="mainContent">
+    <div id="moduleContainer"></div>
+  </main>
+</div>
+
+<!-- ── SCRIPTS ──────────────────────────────────────────────────── -->
+<script src="/src/js/utils/util.js"></script>
+<script src="/src/js/utils/api.js?v=3"></script>
+<script src="/src/js/utils/router.js"></script>
+<script src="/src/js/utils/auth.js"></script>
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/addon-fit.js"></script>
+<script src="/src/js/modules/terminal.js"></script>
+<script src="/src/js/modules/link.js"></script>
+<script src="/src/js/modules/nexus.js?v=3"></script>
+<script src="/src/js/modules/arcadia.js"></script>
+<script src="/src/js/modules/cortex.js"></script>
+<script src="/src/js/modules/settings.js"></script>
+<script src="/src/js/app.js"></script>
+</body>
+</html>
